@@ -1,0 +1,372 @@
+---
+title: "forest_041518"
+author: "Zhenghan Qi"
+date: "4/18/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r,include=FALSE,echo=FALSE,warning=FALSE}
+#Loading library
+library(psych)
+library(readr)
+library(optimx)
+library(corrplot)
+library(reshape)
+library(reshape2)
+library(lmerTest)
+library(ggplot2)
+library(scales)
+library(ggbeeswarm)
+library(Hmisc)
+library(arm)
+source("~/Dropbox (MIT)/how-to/stats/R-related/a.pcor.test.R")
+```
+
+```{r,include=FALSE,echo=FALSE,warning=FALSE}
+#Load data
+load("~/Dropbox (Personal)/CindyLab/PigPen/PigPen_Forest_041518.RData")
+```
+
+
+```{r,include=FALSE,echo=FALSE,warning=FALSE}
+# summarize forest action data
+summary(forest_data)
+forest_id <- unique(forest_data$subnum)
+# split forest data into list A and list B for internal consistency analysis
+forest_dataA <- subset(forest_data,list == "Put A")
+forest_dataB <- subset(forest_data,list == "Put B") 
+```
+
+## Cronbach's alpha for the sentence task
+* Action - list A: 0.92, list B: 0.82, average: 0.87
+* DD2 Look - list A: 0.79, list B: 0.69, average: 0.74
+* TD Look - list A: 0.67, list B: 0.71, average: 0.6
+```{r,include=FALSE,echo=FALSE,warning=FALSE}
+dA <- matrix(nrow=12,ncol=12)
+for(i in seq(from=1,to=12,by=1)){dA[i,] <- rbind(forest_dataA$actionError[((i-1)*12+1):(i*12)])}
+psych::alpha(dA,check.keys = TRUE)$total$std.alpha
+
+dB <- matrix(nrow=12,ncol=12)
+for(i in seq(from=1,to=12,by=1)){dB[i,] <- rbind(forest_dataB$actionError[((i-1)*12+1):(i*12)])}
+psych::alpha(dB,check.keys = TRUE)$total$std.alpha
+
+rm(dA,dB)
+
+dA <- matrix(nrow=12,ncol=12)
+for(i in seq(from=1,to=12,by=1)){dA[i,] <- rbind(forest_dataA$DD2[((i-1)*12+1):(i*12)])}
+psych::alpha(dA,check.keys = TRUE)$total$std.alpha
+
+dB <- matrix(nrow=12,ncol=12)
+for(i in seq(from=1,to=12,by=1)){dB[i,] <- rbind(forest_dataB$DD2[((i-1)*12+1):(i*12)])}
+psych::alpha(dB,check.keys = TRUE)$total$std.alpha
+
+rm(dA,dB)
+
+dA <- matrix(nrow=12,ncol=12)
+for(i in seq(from=1,to=12,by=1)){dA[i,] <- rbind(forest_dataA$Tdinto[((i-1)*12+1):(i*12)])}
+psych::alpha(dA,check.keys = TRUE)$total$std.alpha
+
+dB <- matrix(nrow=12,ncol=12)
+for(i in seq(from=1,to=12,by=1)){dB[i,] <- rbind(forest_dataB$Tdinto[((i-1)*12+1):(i*12)])}
+psych::alpha(dB,check.keys = TRUE)$total$std.alpha
+
+rm(dA,dB)
+```
+
+## Cronbach's alpha for the simons task
+* list L: 0.86; list F: 0.79, average: 0.82
+```{r,include=FALSE,echo=FALSE,warning=FALSE}
+simon_all <- read_csv("~/Dropbox (Personal)/CindyLab/EnchantedForest/Coding/SimonSays/simon_all.csv")
+simon_forest <- subset(simon_all,subj %in% forest_id)
+simon_forestF <- subset(simon_forest,list =="F")
+simon_forestL <- subset(simon_forest,list =="L")
+dF <- matrix(nrow=12,ncol=10)
+for(i in seq(from=1,to=10,by=1)){dF[i,] <- rbind(simon_forestF$correct[((i-1)*10+1):(i*10)])}
+psych::alpha(dF,check.keys = TRUE)$total$std.alpha
+
+dL <- matrix(nrow=12,ncol=10)
+for(i in seq(from=1,to=10,by=1)){dL[i,] <- rbind(simon_forestL$correct[((i-1)*10+1):(i*10)])}
+psych::alpha(dL,check.keys = TRUE)$total$std.alpha
+```
+
+## Cronbach's alpha for the SLAS task
+* 0.97
+```{r,include=FALSE,echo=FALSE,warning=FALSE}
+slas_all <- read_csv("~/Dropbox (Personal)/CindyLab/EnchantedForest/Coding/SLAS/slas_all.csv")
+slas_forest <- subset(slas_all,subjnum %in% forest_id)
+dF <- matrix(nrow=23,ncol=19)
+for(i in seq(from=1,to=19,by=1)){dF[i,] <- rbind(slas_forest$Rating[((i-1)*19+1):(i*19)])}
+psych::alpha(dF,check.keys = TRUE)$total$std.alpha
+
+dL <- matrix(nrow=12,ncol=10)
+for(i in seq(from=1,to=10,by=1)){dL[i,] <- rbind(simon_forestL$correct[((i-1)*10+1):(i*10)])}
+psych::alpha(dL,check.keys = TRUE)$total$std.alpha
+```
+
+## Forest Action Analysis
+* testing main experimental effects on action
+    + significant effect of ambiguity
+```{r action experimental, echo=TRUE}
+forest.lmer<- lmer(elog ~ ambcode*refcode  + (1 | subnum) + (0+ambcode|subnum), control = lmerControl(optimizer = "optimx", calc.derivs = FALSE, optCtrl = list(method = "nlminb", starttests = FALSE, kkt = FALSE)), data=forest)
+summary(forest.lmer)
+```
+
+* plot the ambiguity by referential context interaction
+```{r plot_action, echo=TRUE}
+forest$errorprop = forest$actionError/6
+levels(forest$ref) = c("1-Referent","2-Referent")
+ggplot() +
+  theme_classic(base_size = 20.0) +
+  ylab(label = 'Mean Proportion of \nAction Errors') +
+  scale_y_continuous(breaks = pretty_breaks(),limits = c(0,1)) +
+  geom_bar(aes(y = errorprop, x = amb,fill = as.factor(amb)),data=forest,colour="black",fun.data = mean_sdl,stat = 'summary') +
+  geom_beeswarm(aes(x = amb,y = errorprop),data=forest,dodge.width=0.9,cex=2.5) +
+  geom_errorbar(aes(y = errorprop, x = amb),data=forest,size = 0.3,width = 0.2,fun.y = function(x) mean(x),fun.ymin = function(x) mean(x) - sd(x)/sqrt(length(x)),fun.ymax = function(x) mean(x) + sd(x)/sqrt(length(x)) ,stat = 'summary')+
+  facet_wrap(facets = ~ref) +
+  scale_x_discrete(name = 'Ambiguity',breaks = c("1","0"),labels = c("Ambig.","Unambig."))+   
+  scale_fill_brewer(palette = 'Set2') +
+  theme(legend.position = "none")
+```
+
+* get subject-specific ambiguity effect on action
+```{r indiv actionamb, echo=TRUE}
+forest_ambeffect=ranef(forest.lmer)$subnum[2]
+forest_ambeffect <- cbind(forest_ambeffect,forest_id)
+colnames(forest_ambeffect)[2] = "subnum"
+colnames(forest_ambeffect)[1] = "action_ambeffect"
+hist(forest_ambeffect$action_ambeffect)
+```
+
+## Analysis of Fixation
+* autoregreesive generalized mixed effect models of DD1 with only the experimental factors
+    + no significant effect
+```{r DD1_AR1, echo=TRUE}
+forest_dd1_ar1 <- read.delim("~/Dropbox (Personal)/CindyLab/EnchantedForest/Forest_Writing/forest_n2_onset.txt",check.names=FALSE)
+forest_dd1_ar1 <- subset(forest_dd1_ar1,Subnum %in% forest_id)
+forest_dd1_ar1 <- subset(forest_dd1_ar1,Drop!="drop")
+forest_dd1_ar1 <- melt(forest_dd1_ar1,id = c(1:6))
+colnames(forest_dd1_ar1)[7]="time"
+colnames(forest_dd1_ar1)[8]="looks"
+forest_dd1_ar1$ddlooks = ifelse(forest_dd1_ar1$looks=="DD",1,0)
+forest_dd1_ar1 = forest_dd1_ar1[order(forest_dd1_ar1$Subnum,forest_dd1_ar1$Trial,forest_dd1_ar1$time),]
+# add a column of dd looks with 1 timepoints of lag.
+forest_dd1_ar1$ddlag1=NA
+for (s in forest_id){
+  s_trial <- unique(forest_dd1_ar1[forest_dd1_ar1$Subnum==s,]$Trial)
+  for (t in s_trial){
+    i = which(forest_dd1_ar1$Subnum==s & forest_dd1_ar1$Trial==t)
+    for (ix in i[-1]){
+      forest_dd1_ar1$ddlag1[ix] = forest_dd1_ar1$ddlooks[ix-1]
+    }
+  }
+}
+forest_dd1_ar1 = subset(forest_dd1_ar1,time!=167)
+forest_dd1_ar1$ambcode <- ifelse(forest_dd1_ar1$Amb==0,-.5,.5)
+forest_dd1_ar1$refcode<- ifelse(forest_dd1_ar1$Ref==1,-.5,.5)
+dd1.lmer.ar1 <- glmer(ddlooks ~ 1 + ddlag1 + ambcode*refcode + (-1+ddlag1+ambcode|Subnum) + (1+ddlag1+ambcode*refcode|Trial), family = binomial,control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e5)),data = forest_dd1_ar1)
+summary(dd1.lmer.ar1)
+```
+
+* autoregreesive generalized mixed effect models of DD2 with only the experimental factors
+    + significant effect of ambiguity and significant interaction between ambiguity and referential context.
+```{r DD2_AR1, echo=TRUE}
+forest_dd2_ar1 <- read.delim("~/Dropbox (Personal)/CindyLab/EnchantedForest/Forest_Writing/forest_n2_onset2.txt",check.names=FALSE)
+forest_dd2_ar1 <- subset(forest_dd2_ar1,Subnum %in% forest_id)
+forest_dd2_ar1 <- subset(forest_dd2_ar1,Drop!="drop")
+forest_dd2_ar1 <- melt(forest_dd2_ar1,id = c(1:6))
+colnames(forest_dd2_ar1)[7]="time"
+colnames(forest_dd2_ar1)[8]="looks"
+forest_dd2_ar1$ddlooks = ifelse(forest_dd2_ar1$looks=="DD",1,0)
+forest_dd2_ar1 = forest_dd2_ar1[order(forest_dd2_ar1$Subnum,forest_dd2_ar1$Trial,forest_dd2_ar1$time),]
+# add a column of dd looks with 1 timepoints of lag.
+forest_dd2_ar1$ddlag1=NA
+for (s in forest_id){
+  s_trial <- unique(forest_dd2_ar1[forest_dd2_ar1$Subnum==s,]$Trial)
+  for (t in s_trial){
+    i = which(forest_dd2_ar1$Subnum==s & forest_dd2_ar1$Trial==t)
+    for (ix in i[-1]){
+      forest_dd2_ar1$ddlag1[ix] = forest_dd2_ar1$ddlooks[ix-1]
+    }
+  }
+}
+forest_dd2_ar1 = subset(forest_dd2_ar1,time!=1500)
+forest_dd2_ar1$ambcode <- ifelse(forest_dd2_ar1$Amb==0,-.5,.5)
+forest_dd2_ar1$refcode<- ifelse(forest_dd2_ar1$Ref==1,-.5,.5)
+dd2.lmer.ar1 <- glmer(ddlooks ~ 1 + ddlag1 + ambcode*refcode + (1+ddlag1+ambcode|Subnum) + (1+ddlag1+ambcode*refcode|Trial), family = binomial,control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e5)),data = forest_dd2_ar1)
+summary(dd2.lmer.ar1)
+```
+* simple effect of ambiguity in the 1-referent group: significant ambiguity effect
+```{r DD2_AR1_1ref, echo=TRUE}
+forest_dd2_ar1$Ref = as.factor(as.character(forest_dd2_ar1$Ref))
+levels(forest_dd2_ar1$Ref)
+forest_dd2_ar1$ref1_code = 0
+forest_dd2_ar1[forest_dd2_ar1$Ref=="2",]$ref1_code = 1
+dd2.lmer.ar1.1ref <- glmer(ddlooks ~ 1 + ddlag1 + ambcode*ref1_code + (1+ddlag1+ambcode|Subnum) + (1+ddlag1+ambcode*ref1_code|Trial), family = binomial,control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e5)),data = forest_dd2_ar1)
+summary(dd2.lmer.ar1.1ref)
+```
+
+* simple effect of ambiguity in the 2-referent group: non-significant ambiguity effect
+```{r DD2_AR1_2ref, echo=TRUE}
+forest_dd2_ar1$ref2_code = 1
+forest_dd2_ar1[forest_dd2_ar1$Ref=="2",]$ref2_code = 0
+dd2.lmer.ar1.2ref <- glmer(ddlooks ~ 1 + ddlag1 + ambcode*ref2_code + (1+ddlag1+ambcode|Subnum) + (1+ddlag1+ambcode*ref2_code|Trial), family = binomial,control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e5)),data = forest_dd2_ar1)
+summary(dd2.lmer.ar1.2ref)
+```
+
+* plot ambiguity x referential context interaction on distractor destination fixation (late window)
+```{r plot_DD2, echo=TRUE}
+forest_DD2 = cast(forest_data2,subnum+amb+ref~.,value="DD2",mean)
+colnames(forest_DD2)[4]="DD2"
+levels(forest_DD2$ref) = c("1-Referent","2-Referent")
+ggplot() +
+  theme_classic(base_size = 20.0) +
+  ylab(label = 'Mean Proportion of Looks to \nIncorrect Destination') +
+  scale_y_continuous(breaks = pretty_breaks(),limits = c(0,.8)) +
+  geom_bar(aes(y = DD2, x = amb,fill = as.factor(amb)),data=forest_DD2,colour="black",fun.data = mean_sdl,stat = 'summary') +
+  geom_beeswarm(aes(x = amb,y = DD2),data=forest_DD2,dodge.width=0.9,cex=2.5) +
+  geom_errorbar(aes(y = DD2, x = amb),data=forest_DD2,size = 0.3,width = 0.2,fun.y = function(x) mean(x),fun.ymin = function(x) mean(x) - sd(x)/sqrt(length(x)),fun.ymax = function(x) mean(x) + sd(x)/sqrt(length(x)) ,stat = 'summary')+
+  facet_wrap(facets = ~ref) +
+  scale_x_discrete(name = 'Ambiguity',breaks = c("1","0"),labels = c("Ambig.","Unambig."))+   
+  scale_fill_brewer(palette = 'Set2') +
+  theme(legend.position = "none")
+```  
+
+* get subject-specific ambiguity effect on DD2
+```{r indiv dd2amb, echo=TRUE}
+dd2_ambeffect = ranef(dd2.lmer.ar1)$Subnum[3]
+dd2_ambeffect = cbind(dd2_ambeffect,forest_id)
+dd2_se_ambeffect = se.ranef(dd2.lmer.ar1)$Subnum[,3]
+dd2_ambeffect = cbind(dd2_se_ambeffect,dd2_ambeffect)
+dd2_intercept = ranef(dd2.lmer.ar1)$Subnum[1]
+dd2_ambeffect = cbind (dd2_intercept,dd2_ambeffect)
+colnames(dd2_ambeffect)= c("intercept","dd2_se_ambeffect","dd2_ambeffect","subnum")
+```
+* get reliablity measure for DD2 fixation
+** reliability for dd2 is:
+```{r dd2 reliability, echo=TRUE}
+dd2_ambeffect$dd2_se_sq = (dd2_ambeffect$dd2_se_ambeffect)^2
+dd2_reliability = (var(dd2_ambeffect$intercept) - mean(dd2_ambeffect$dd2_se_sq))/var(dd2_ambeffect$intercept)
+print(dd2_reliability)
+```
+
+* autoregreesive generalized mixed effect models of TDinto with only the experimental factors
+    + significant ambiguity effect.
+```{r td2_AR1, echo=TRUE}
+forest_td2_ar1 <- read.delim("~/Dropbox (Personal)/CindyLab/EnchantedForest/Forest_Writing/forest_into_onset.txt",check.names=FALSE)
+forest_td2_ar1 <- subset(forest_td2_ar1,Subnum %in% forest_id)
+forest_td2_ar1 <- subset(forest_td2_ar1,Drop!="drop")
+forest_td2_ar1 <- melt(forest_td2_ar1,id = c(1:6))
+colnames(forest_td2_ar1)[7]="time"
+colnames(forest_td2_ar1)[8]="looks"
+forest_td2_ar1$tdlooks = ifelse(forest_td2_ar1$looks=="TD",1,0)
+forest_td2_ar1 = forest_td2_ar1[order(forest_td2_ar1$Subnum,forest_td2_ar1$Trial,forest_td2_ar1$time),]
+# add a column of dd looks with 1 timepoints of lag.
+forest_td2_ar1$tdlag1=NA
+for (s in forest_id){
+  s_trial <- unique(forest_td2_ar1[forest_td2_ar1$Subnum==s,]$Trial)
+  for (t in s_trial){
+    i = which(forest_td2_ar1$Subnum==s & forest_td2_ar1$Trial==t)
+    for (ix in i[-1]){
+      forest_td2_ar1$tdlag1[ix] = forest_td2_ar1$tdlooks[ix-1]
+    }
+  }
+}
+forest_td2_ar1$ambcode <- ifelse(forest_td2_ar1$Amb==0,-.5,.5)
+forest_td2_ar1$refcode<- ifelse(forest_td2_ar1$Ref==1,-.5,.5)
+forest_td2_ar1 = subset(forest_td2_ar1,time!= 167)
+td2.lmer.ar1 <- glmer(tdlooks ~ 1 + tdlag1 + ambcode*refcode + (1+tdlag1+ambcode|Subnum) + (1+tdlag1+ambcode+refcode|Trial), family = binomial,control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e5)),data = forest_td2_ar1)
+summary(td2.lmer.ar1)
+```
+
+* plot significant ambiguity effect on target destination fixation (into)
+```{r plot_TD2, echo=TRUE}
+forest_TD2 = cast(forest_data,subnum+amb+ref~.,value="Tdinto",mean)
+colnames(forest_TD2)[4]="Tdinto"
+levels(forest_TD2$ref) = c("1-Referent","2-Referent")
+ggplot() +
+  theme_classic(base_size = 20.0) +
+  ylab(label = 'Mean Proportion of Looks to \nCorrect Destination') +
+  scale_y_continuous(breaks = pretty_breaks(),limits = c(0,0.8)) +
+  geom_bar(aes(y = Tdinto, x = amb,fill = as.factor(amb)),data=forest_TD2,colour="black",fun.data = mean_sdl,stat = 'summary') +
+  geom_beeswarm(aes(x = amb,y = Tdinto),data=forest_TD2,dodge.width=0.9,cex=2.5) +
+  geom_errorbar(aes(y = Tdinto, x = amb),data=forest_TD2,size = 0.3,width = 0.2,fun.y = function(x) mean(x),fun.ymin = function(x) mean(x) - sd(x)/sqrt(length(x)),fun.ymax = function(x) mean(x) + sd(x)/sqrt(length(x)) ,stat = 'summary')+
+  facet_wrap(facets = ~ref) +
+  scale_x_discrete(name = 'Ambiguity',breaks = c("1","0"),labels = c("Ambig.","Unambig."))+   
+  scale_fill_brewer(palette = 'Set2') +
+  theme(legend.position = "none")
+```  
+
+* get subject-specific ambiguity effect on TD2
+```{r indiv td2amb, echo=TRUE}
+td2_ambeffect = ranef(td2.lmer.ar1)$Subnum[3]
+td2_ambeffect = cbind(td2_ambeffect,forest_id)
+td2_se_ambeffect = se.ranef(td2.lmer.ar1)$Subnum[,3]
+td2_ambeffect = cbind(td2_se_ambeffect,td2_ambeffect)
+td2_intercept = ranef(td2.lmer.ar1)$Subnum[1]
+td2_ambeffect = cbind (td2_intercept,td2_ambeffect)
+colnames(td2_ambeffect)= c("intercept","td2_se_ambeffect","td2_ambeffect","subnum")
+```
+
+* get reliablity measure for TD2 fixation
+** reliability for td2 is
+```{r td2 reliability, echo=TRUE}
+td2_ambeffect$td2_se_sq = (td2_ambeffect$td2_se_ambeffect)^2
+td2_reliability = (var(td2_ambeffect$intercept) - mean(td2_ambeffect$td2_se_sq))/var(td2_ambeffect$intercept)
+print(td2_reliability)
+```
+## individual difference analysis
+* testing the spearman correlation between ambeffect and individual difference measures
+    + we did not report digit span measure in the paper, because there are 6 children who did not complete the digit span. Also this was a forward digit span task, which is more related to verbal short term memory than working memory.
+```{r indiv spearman, echo=FALSE, warning=FALSE}
+forest_indiv <- forest_uni[c("subnum","age","simonacc","slat")]
+forest_indiv <- merge(forest_indiv,forest_ambeffect,id = c("subnum"),all=TRUE)
+forest_indiv <- merge(forest_indiv,dd2_ambeffect,id=c("subnum"),all=TRUE)
+forest_indiv <- merge(forest_indiv,td2_ambeffect[,c(2:5)],id=c("subnum"),all=TRUE)
+forest_indiv <- forest_indiv[,c(2:5,8,11)]
+# spearman correlation matrix
+mat2.r<-sapply(1:(ncol(forest_indiv)), function(x) sapply(1:(ncol(forest_indiv)), function(y) {
+  if (x == y) 1
+  else {
+    cor.test(forest_indiv[,x], forest_indiv[,y], method="spearman")$estimate
+    }
+}))
+mat2.p<-sapply(1:(ncol(forest_indiv)), function(x) sapply(1:(ncol(forest_indiv)), function(y) {
+  if (x == y) 1
+  else {
+    cor.test(forest_indiv[,x], forest_indiv[,y], method="spearman")$p.value
+    }
+}))
+colnames(mat2.r)=c("Age","SimonSays","SLAT","Action","DD2","TD2")
+rownames(mat2.r)=c("Age","SimonSays","SLAT","Action","DD2","TD2")
+colnames(mat2.p)=c("Age","SimonSays","SLAT","Action","DD2","TD2")
+rownames(mat2.p)=c("Age","SimonSays","SLAT","Action","DD2","TD2")
+```
+
+* list correlation rho values
+    + simon says scores are significantly correlated with ambiguity effect on action.
+```{r mat2.r, echo=FALSE}
+mat2.r
+```
+
+* list correlation p values (one-sided)
+```{r mat2.p, echo=FALSE}
+mat2.p = mat2.p * 0.5
+mat2.p
+```
+
+* Scatter plots of individual difference measures and the sentence task
+    + plot the correlation between Simon Says Accuracy in the incongruent condition and the Ambiguity effect on action
+```{r plot_simonaction,echo=FALSE}
+ggplot() +
+  theme_classic(base_size = 20.0) +
+  xlab(label = 'Simon Says Incongruent Accuracy') +
+  ylab(label = 'Ambiguity effect on Action \n(Ambiguous vs. Unambiguous)') +
+  scale_x_continuous(breaks = pretty_breaks()) +
+  scale_y_continuous(breaks = pretty_breaks()) +
+  geom_point(aes(x = simonacc,y = action_ambeffect),data=forest_indiv,shape = 23, size = 3, position=position_jitter(h=0, w=0.01)) +
+  geom_smooth(aes(x = simonacc,y = action_ambeffect),data=forest_indiv,colour = '#000000',method = loess,formula = 'y ~ x',se = FALSE)
+```

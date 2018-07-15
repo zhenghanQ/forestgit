@@ -1,0 +1,405 @@
+---
+title: "pigpen_041518"
+author: "Zhenghan Qi"
+date: "4/18/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r,include=FALSE,echo=FALSE,warning=FALSE}
+#Loading library
+library(psych)
+library(readr)
+library(optimx)
+library(corrplot)
+library(reshape)
+library(reshape2)
+library(lmerTest)
+library(ggplot2)
+library(scales)
+library(ggbeeswarm)
+library(Hmisc)
+library(MASS)
+library(arm)
+source("~/Dropbox (MIT)/how-to/stats/R-related/a.pcor.test.R")
+```
+
+```{r,include=FALSE,echo=FALSE,warning=FALSE}
+#Load data
+load("~/Dropbox (Personal)/CindyLab/EnchantedForest/Forest_Writing/forest_pigpen_041518.RData")
+```
+
+```{r,include=FALSE,echo=FALSE,warning=FALSE}
+# summarize forest action data
+summary(submean)
+pigpen_id = unique(submean$Subnum)
+# split forest data into list A and list B for internal consistency analysis
+pigpen_action <- pigpen_action[order(pigpen_action[,1],pigpen_action[,8]),] 
+pigpen_dataR_1 <- subset(pigpen_action,related == "R" & ref=="1")
+pigpen_dataR_2 <- subset(pigpen_action,related == "R" & ref=="2")
+pigpen_dataU_1 <- subset(pigpen_action,related == "U" & ref=="1")
+pigpen_dataU_2 <- subset(pigpen_action,related == "U" & ref=="2") 
+pigpen_eyeR_1 <- subset(pigpen_eye38,related == "R" & ref=="1")
+pigpen_eyeR_2 <- subset(pigpen_eye38,related == "R" & ref=="2")
+pigpen_eyeU_1 <- subset(pigpen_eye38,related == "U" & ref=="1")
+pigpen_eyeU_2 <- subset(pigpen_eye38,related == "U" & ref=="2") 
+```
+
+## Cronbach's alpha for the sentence task
+* Action - list Related-1Ref: 0.93, Related-2Ref: 0.88, Unrelated-1Ref: 0.89, Unrelated-2Ref: 0.84, Average: 0.89
+* DD2 Look - list Related-1Ref: 0.72, Related-2Ref: 0.77, Unrelated-1Ref: 0.82, Unrelated-2Ref: 0.70, Average: 0.75
+```{r,include=FALSE,echo=FALSE,warning=FALSE}
+dR_1 = cast(pigpen_dataR_1,subjnum~trial,value="correct")
+dR_1 = dR_1[,c(2:13)]
+psych::alpha(dR_1,check.keys = TRUE)$total$std.alpha
+
+dR_2 = cast(pigpen_dataR_2,subjnum~trial,value="correct")
+dR_2 = dR_2[,c(2:13)]
+psych::alpha(dR_2,check.keys = TRUE)$total$std.alpha
+
+dU_1 = cast(pigpen_dataU_1,subjnum~trial,value="correct")
+dU_1 = dU_1[,c(2:13)]
+psych::alpha(dU_1,check.keys = TRUE)$total$std.alpha
+
+dU_2 = cast(pigpen_dataU_2,subjnum~trial,value="correct")
+dU_2 = dU_2[,c(2:13)]
+psych::alpha(dU_2,check.keys = TRUE)$total$std.alpha
+
+rm(dR_1,dR_2,dU_1,dU_2)
+
+dR_1 = cast(pigpen_eyeR_1,Subnum~trial,value="DD2_elog",sum)
+dR_1 = dR_1[,c(2:13)]
+psych::alpha(dR_1,check.keys = TRUE)$total$std.alpha
+
+dR_2 = cast(pigpen_eyeR_2,Subnum~trial,value="DD2_elog",sum)
+dR_2 = dR_2[,c(2:13)]
+psych::alpha(dR_2,check.keys = TRUE)$total$std.alpha
+
+dU_1 = cast(pigpen_eyeU_1,Subnum~trial,value="DD2_elog",sum)
+dU_1 = dU_1[,c(2:13)]
+psych::alpha(dU_1,check.keys = TRUE)$total$std.alpha
+
+dU_2 = cast(pigpen_eyeU_2,Subnum~trial,value="DD2_elog",sum)
+dU_2 = dU_2[,c(2:13)]
+psych::alpha(dU_2,check.keys = TRUE)$total$std.alpha
+rm(dR_1,dR_2,dU_1,dU_2)
+```
+
+## Cronbach's alpha for the Flanker task block 3
+* 0.88
+```{r,include=FALSE,echo=FALSE,warning=FALSE}
+summary(flanker_b3)
+dF <- cast(flanker_b3,SubjectID~TrialNo,value="Correct",sum)
+dF = dF[,c(2:46)]
+psych::alpha(dF,check.keys = TRUE)$total$std.alpha
+rm(dF)
+```
+
+
+## Pigpen Action Analysis
+* testing main experimental effects on action
+    + significant effect of ambiguity, marginal effect of referential context, and marginal interaction between ambiguity and referential context
+```{r action experimental, echo=TRUE}
+pigpen.lmer<- lmer(elog ~ ambcode*refcode  + (1 | Subnum) + (0+ambcode|Subnum), control = lmerControl(optimizer = "optimx", calc.derivs = FALSE, optCtrl = list(method = "nlminb", starttests = FALSE, kkt = FALSE)), data=submean)
+summary(pigpen.lmer)
+```
+
+* plot the ambiguity by referential context interaction
+```{r plot_action, echo=TRUE}
+levels(submean$ref) = c("1-Referent","2-Referent")
+ggplot() +
+  theme_classic(base_size = 20.0) +
+  ylab(label = 'Mean Proportion of \nAction Errors') +
+  scale_y_continuous(breaks = pretty_breaks(),limits = c(0,1)) +
+  geom_bar(aes(y = errorprop, x = amb,fill = as.factor(amb)),data=submean,colour="black",fun.data = mean_sdl,stat = 'summary') +
+  geom_beeswarm(aes(x = amb,y = errorprop),data=submean,dodge.width=0.9,cex=2.5) +
+  geom_errorbar(aes(y = errorprop, x = amb),data=submean,size = 0.3,width = 0.2,fun.y = function(x) mean(x),fun.ymin = function(x) mean(x) - sd(x)/sqrt(length(x)),fun.ymax = function(x) mean(x) + sd(x)/sqrt(length(x)) ,stat = 'summary')+
+  facet_wrap(facets = ~ref) +
+  scale_x_discrete(name = 'Ambiguity',breaks = c("1","0"),labels = c("Ambig.","Unambig."))+   
+  scale_fill_brewer(palette = 'Set2') +
+  theme(legend.position = "none")
+```
+
+* get subject-specific ambiguity effect on action
+```{r indiv actionamb, echo=TRUE}
+pigpen_ambeffect=ranef(pigpen.lmer)$Subnum[2]
+pigpen_ambeffect <- cbind(pigpen_ambeffect,pigpen_id)
+colnames(pigpen_ambeffect)[1]="action_ambeffect_lmer"
+colnames(pigpen_ambeffect)[2]="subnum"
+hist(pigpen_ambeffect$action_ambeffect_lmer)
+```
+
+## Analysis of Fixation
+* autoregreesive generalized mixed effect models of DD1 with only the experimental factors
+    + no significant effect
+```{r DD1_AR1, echo=TRUE}
+pigpen_dd1_ar1 <- read.delim("~/Dropbox (Personal)/CindyLab/EnchantedForest/Forest_Writing/pigpen_n2_onset1.txt",check.names=FALSE)
+pigpen_dd1_ar1 <- subset(pigpen_dd1_ar1,Subnum %in% pigpen_id)
+pigpen_dd1_ar1 <- subset(pigpen_dd1_ar1,Drop!=1)
+pigpen_dd1_ar1 <- melt(pigpen_dd1_ar1,id = c(1:6))
+colnames(pigpen_dd1_ar1)[7]="time"
+colnames(pigpen_dd1_ar1)[8]="looks"
+pigpen_dd1_ar1$ddlooks = ifelse(pigpen_dd1_ar1$looks=="DD",1,0)
+pigpen_dd1_ar1 = pigpen_dd1_ar1[order(pigpen_dd1_ar1$Subnum,pigpen_dd1_ar1$Trial,pigpen_dd1_ar1$time),]
+# add a column of dd looks with 1 timepoints of lag.
+pigpen_dd1_ar1$ddlag1=NA
+for (s in pigpen_id){
+  s_trial <- unique(pigpen_dd1_ar1[pigpen_dd1_ar1$Subnum==s,]$Trial)
+  for (t in s_trial){
+    i = which(pigpen_dd1_ar1$Subnum==s & pigpen_dd1_ar1$Trial==t)
+    for (ix in i[-1]){
+      pigpen_dd1_ar1$ddlag1[ix] = pigpen_dd1_ar1$ddlooks[ix-1]
+    }
+  }
+}
+pigpen_dd1_ar1$ambcode <- ifelse(pigpen_dd1_ar1$Amb==0,-.5,.5)
+pigpen_dd1_ar1$refcode<- ifelse(pigpen_dd1_ar1$Ref=="1-ref",-.5,.5)
+dd1.lmer.ar1 <- glmer(ddlooks ~ 1 + ddlag1 + ambcode*refcode + (1+ddlag1+ambcode|Subnum) + (1+ddlag1+ambcode*refcode|Trial), family = binomial,control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e5)),data = pigpen_dd1_ar1)
+summary(dd1.lmer.ar1)
+```
+
+* autoregreesive generalized mixed effect models of DD2 with only the experimental factors
+    + significant ambiguity effect
+```{r DD2_AR1, echo=TRUE}
+pigpen_dd2_ar1 <- read.delim("~/Dropbox (Personal)/CindyLab/EnchantedForest/Forest_Writing/pigpen_n2_onset2.txt",check.names=FALSE)
+pigpen_dd2_ar1 <- subset(pigpen_dd2_ar1,Subnum %in% pigpen_id)
+pigpen_dd2_ar1 <- subset(pigpen_dd2_ar1,Drop!=1)
+pigpen_dd2_ar1 <- melt(pigpen_dd2_ar1,id = c(1:6))
+colnames(pigpen_dd2_ar1)[7]="time"
+colnames(pigpen_dd2_ar1)[8]="looks"
+pigpen_dd2_ar1$ddlooks = ifelse(pigpen_dd2_ar1$looks=="DD",1,0)
+pigpen_dd2_ar1 = pigpen_dd2_ar1[order(pigpen_dd2_ar1$Subnum,pigpen_dd2_ar1$Trial,pigpen_dd2_ar1$time),]
+# add a column of dd looks with 1 timepoints of lag.
+pigpen_dd2_ar1$ddlag1=NA
+for (s in pigpen_id){
+  s_trial <- unique(pigpen_dd2_ar1[pigpen_dd2_ar1$Subnum==s,]$Trial)
+  for (t in s_trial){
+    i = which(pigpen_dd2_ar1$Subnum==s & pigpen_dd2_ar1$Trial==t)
+    for (ix in i[-1]){
+      pigpen_dd2_ar1$ddlag1[ix] = pigpen_dd2_ar1$ddlooks[ix-1]
+    }
+  }
+}
+pigpen_dd2_ar1$ambcode <- ifelse(pigpen_dd2_ar1$Amb==0,-.5,.5)
+pigpen_dd2_ar1$refcode<- ifelse(pigpen_dd2_ar1$Ref=="1-ref",-.5,.5)
+pigpen_dd2_ar1 = subset(pigpen_dd2_ar1,time!= 1500)
+dd2.lmer.ar1 <- glmer(ddlooks ~ 1 + ddlag1 + ambcode*refcode + (1+ddlag1+ambcode|Subnum) + (1+ddlag1+ambcode*refcode|Trial), family = binomial,control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e5)),data = pigpen_dd2_ar1)
+summary(dd2.lmer.ar1)
+```
+
+* plot the significant effect of ambiguity on the looks to distractor destination (DD2)
+```{r plot_DD2, echo=TRUE}
+eye_mean$amb=as.factor(eye_mean$amb)
+levels(eye_mean$ref) =  c("1-Referent","2-Referent")
+ggplot() +
+  theme_classic(base_size = 20.0) +
+  ylab(label = 'Mean Proportion of Looks to \nIncorrect Destination') +
+  scale_y_continuous(breaks = pretty_breaks(),limits = c(0,0.8)) +
+  geom_bar(aes(y = DD2, x = amb,fill = as.factor(amb)),data=eye_mean,colour="black",fun.data = mean_sdl,stat = 'summary') +
+  geom_beeswarm(aes(x = amb,y = DD2),data=eye_mean,dodge.width=0.9,cex=2.5) +
+  geom_errorbar(aes(y = DD2, x = amb),data=eye_mean,size = 0.3,width = 0.2,fun.y = function(x) mean(x),fun.ymin = function(x) mean(x) - sd(x)/sqrt(length(x)),fun.ymax = function(x) mean(x) + sd(x)/sqrt(length(x)) ,stat = 'summary')+
+  facet_wrap(facets = ~ref) +
+  scale_x_discrete(name = 'Ambiguity',breaks = c("1","0"),labels = c("Ambig.","Unambig."))+   
+  scale_fill_brewer(palette = 'Set2') +
+  theme(legend.position = "none")
+```  
+  
+* get subject-specific ambiguity effect on DD2
+```{r indiv dd2amb, echo=TRUE}
+dd2_ambeffect = ranef(dd2.lmer.ar1)$Subnum[3]
+dd2_ambeffect = cbind(dd2_ambeffect,pigpen_id)
+dd2_se_ambeffect = se.ranef(dd2.lmer.ar1)$Subnum[,3]
+dd2_ambeffect = cbind(dd2_se_ambeffect,dd2_ambeffect)
+dd2_intercept = ranef(dd2.lmer.ar1)$Subnum[1]
+dd2_ambeffect = cbind (dd2_intercept,dd2_ambeffect)
+colnames(dd2_ambeffect)= c("intercept","dd2_se_ambeffect","dd2_ambeffect","subnum")
+```
+
+* get reliablity measure for DD2 fixation
+** reliability for dd2 is 0.68
+```{r dd2 reliability, echo=TRUE}
+dd2_ambeffect$dd2_se_sq = (dd2_ambeffect$dd2_se_ambeffect)^2
+dd2_reliability = (var(dd2_ambeffect$intercept) - mean(dd2_ambeffect$dd2_se_sq))/var(dd2_ambeffect$intercept)
+```
+
+* autoregreesive generalized mixed effect models of TDinto with only the experimental factors
+    + significant ambiguity effect and marginal referential context effect
+```{r TD2_AR1, echo=TRUE}
+pigpen_td2_ar1 <- read.delim("~/Dropbox (Personal)/CindyLab/EnchantedForest/Forest_Writing/pigpen_into_onset.txt",check.names=FALSE)
+pigpen_td2_ar1 <- subset(pigpen_td2_ar1,Subnum %in% pigpen_id)
+pigpen_td2_ar1 <- subset(pigpen_td2_ar1,Drop!=1)
+pigpen_td2_ar1 <- melt(pigpen_td2_ar1,id = c(1:6))
+colnames(pigpen_td2_ar1)[7]="time"
+colnames(pigpen_td2_ar1)[8]="looks"
+pigpen_td2_ar1$tdlooks = ifelse(pigpen_td2_ar1$looks=="TD",1,0)
+pigpen_td2_ar1 = pigpen_td2_ar1[order(pigpen_td2_ar1$Subnum,pigpen_td2_ar1$Trial,pigpen_td2_ar1$time),]
+# add a column of dd looks with 1 timepoints of lag.
+pigpen_td2_ar1$tdlag1=NA
+for (s in pigpen_id){
+  s_trial <- unique(pigpen_td2_ar1[pigpen_td2_ar1$Subnum==s,]$Trial)
+  for (t in s_trial){
+    i = which(pigpen_td2_ar1$Subnum==s & pigpen_td2_ar1$Trial==t)
+    for (ix in i[-1]){
+      pigpen_td2_ar1$tdlag1[ix] = pigpen_td2_ar1$tdlooks[ix-1]
+    }
+  }
+}
+pigpen_td2_ar1$ambcode <- ifelse(pigpen_td2_ar1$Amb==0,-.5,.5)
+pigpen_td2_ar1$refcode<- ifelse(pigpen_td2_ar1$Ref=="1-ref",-.5,.5)
+td2.lmer.ar1 <- glmer(tdlooks ~ 1 + tdlag1 + ambcode*refcode + (1+tdlag1+ambcode|Subnum) + (1+tdlag1+ambcode+refcode|Trial), family = binomial,control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e5)),data = pigpen_td2_ar1)
+summary(td2.lmer.ar1)
+```
+
+* plot the significant effect of ambiguity on the looks to correct destination (TD2)
+```{r plot_TD2, echo=TRUE}
+ggplot() +
+  theme_classic(base_size = 20.0) +
+  ylab(label = 'Mean Proportion of Looks to \nCorrect Destination') +
+  scale_y_continuous(breaks = pretty_breaks(),limits = c(0,0.8)) +
+  geom_bar(aes(y = Tdinto, x = amb,fill = as.factor(amb)),data=eye_mean,colour="black",fun.data = mean_sdl,stat = 'summary') +
+  geom_beeswarm(aes(x = amb,y = Tdinto),data=eye_mean,dodge.width=0.9,cex=2.5) +
+  geom_errorbar(aes(y = Tdinto, x = amb),data=eye_mean,size = 0.3,width = 0.2,fun.y = function(x) mean(x),fun.ymin = function(x) mean(x) - sd(x)/sqrt(length(x)),fun.ymax = function(x) mean(x) + sd(x)/sqrt(length(x)) ,stat = 'summary')+
+  facet_wrap(facets = ~ref) +
+  scale_x_discrete(name = 'Ambiguity',breaks = c("1","0"),labels = c("Ambig.","Unambig."))+   
+  scale_fill_brewer(palette = 'Set2') +
+  theme(legend.position = "none")
+```  
+
+* get subject-specific ambiguity effect on TD2
+```{r indiv td2amb, echo=TRUE}
+td2_ambeffect = ranef(td2.lmer.ar1)$Subnum[3]
+td2_ambeffect = cbind(td2_ambeffect,pigpen_id)
+td2_se_ambeffect = se.ranef(td2.lmer.ar1)$Subnum[,3]
+td2_ambeffect = cbind(td2_se_ambeffect,td2_ambeffect)
+td2_intercept = ranef(td2.lmer.ar1)$Subnum[1]
+td2_ambeffect = cbind (td2_intercept,td2_ambeffect)
+colnames(td2_ambeffect)= c("intercept","td2_se_ambeffect","td2_ambeffect","subnum")
+```
+
+* get reliablity measure for TD2 fixation
+** reliability for td2 is -0.10
+```{r td2 reliability, echo=TRUE}
+td2_ambeffect$td2_se_sq = (td2_ambeffect$td2_se_ambeffect)^2
+td2_reliability = (var(td2_ambeffect$intercept) - mean(td2_ambeffect$td2_se_sq))/var(td2_ambeffect$intercept)
+td2_reliability
+```
+
+## individual difference analysis
+* compute switch cost of flanker task
+```{r flanker switch, echo=FALSE}
+switch_acc = cast(flanker_b3,SubjectID~Switch,value = "Correct",sum)
+colnames(switch_acc)[2]="nonsw_sum"
+colnames(switch_acc)[3]="sw_sum"
+switch_count = cast(flanker_b3,SubjectID~Switch,value = "Correct",length)
+colnames(switch_count)[2]="nonsw_count"
+colnames(switch_count)[3]="sw_count"
+switch_acc = merge(switch_acc, switch_count)
+switch_acc$sw_acc = switch_acc$sw_sum/switch_acc$sw_count
+switch_acc$nonsw_acc = switch_acc$nonsw_sum/switch_acc$nonsw_count
+switch_acc$acc_diff = switch_acc$nonsw_acc - switch_acc$sw_acc
+colnames(switch_acc)[1] = "subnum"
+mean(switch_acc$sw_acc)
+t.test(switch_acc$sw_acc,switch_acc$nonsw_acc,paired =TRUE)
+
+switch_rt = cast(flanker_b3,SubjectID~Switch,value = "RT",mean)
+colnames(switch_rt)[2]="nonsw_rt"
+colnames(switch_rt)[3]="sw_rt"
+switch_rt$sw_rtdiff = switch_rt$sw_rt - switch_rt$nonsw_rt
+colnames(switch_rt)[1] = "subnum"
+mean(switch_rt$sw_rtdiff)
+t.test(switch_rt$sw_rt,switch_rt$nonsw_rt,paired =TRUE)
+```
+
+* testing the pearson correlation between ambeffect and individual difference measures
+    + significant correlation between Flanker accuracy in the incongruent condition and Action ambiguity effect, as well as incorrect and correct destination looks (replicating Forest); the relationship between raw PPVT score and the ambiguity effect on the looks to incorrect destination is in the oppsite direction from (Anderson et al., 2011). Children with higher PPVT score seem to have higher switch cost in Flanker test... 
+```{r indiv spearman, echo=FALSE}
+pigpen_indiv <- unique(pigpen_eye38[,c("Subnum","ref","related","Age","PropInc3","switchz","raw")])
+colnames(pigpen_indiv)[1]="subnum"
+pigpen_indiv <- merge(pigpen_indiv,switch_rt[c(1,4)])
+pigpen_indiv <- merge(pigpen_indiv,pigpen_ambeffect,id = c("subnum"),all=TRUE)
+pigpen_indiv <- merge(pigpen_indiv,dd2_ambeffect[,c(3,4)],id=c("subnum"),all=TRUE)
+pigpen_indiv <- merge(pigpen_indiv,td2_ambeffect[,c(3,4)],id=c("subnum"),all=TRUE)
+pigpen_indiv_matrix <- pigpen_indiv[,c(4,5,7:11)]
+mat2.r<-sapply(1:(ncol(pigpen_indiv_matrix)), function(x) sapply(1:(ncol(pigpen_indiv_matrix)), function(y) {
+  if (x == y) 1
+  else {
+    cor.test(pigpen_indiv_matrix[,x], pigpen_indiv_matrix[,y], method="pearson")$estimate
+    }
+}))
+mat2.p<-sapply(1:(ncol(pigpen_indiv_matrix)), function(x) sapply(1:(ncol(pigpen_indiv_matrix)), function(y) {
+  if (x == y) 1
+  else {
+    cor.test(pigpen_indiv_matrix[,x], pigpen_indiv_matrix[,y], method="pearson")$p.value
+    }
+}))
+
+colnames(mat2.r)=c("Age","FlankerIncong","PPVT","FlankerSwitch","Action","DD2","TD2")
+rownames(mat2.r)=c("Age","FlankerIncong","PPVT","FlankerSwitch","Action","DD2","TD2")
+colnames(mat2.p)=c("Age","FlankerIncong","PPVT","FlankerSwitch","Action","DD2","TD2")
+rownames(mat2.p)=c("Age","FlankerIncong","PPVT","FlankerSwitch","Action","DD2","TD2")
+```
+
+* list correlation pearson r values
+```{r mat2.r, echo=FALSE}
+mat2.r
+```
+
+* list correlation p values (one-sided)
+```{r mat2.p, echo=FALSE}
+# one-sided p-value
+mat2.p = mat2.p * 0.5
+mat2.p
+```
+* because flanker switch cost is significantly correlated with PPVT, we performed a multiple linear regression model for each of the DVs.
+    + flanker accuracy in the incongruent condition contributes uniquely to offline ambiguity resolution;
+    
+```{r action_regression, echo=TRUE}
+m1.0 <- lm(action_ambeffect_lmer~Age+PropInc3+sw_rtdiff+raw,data=pigpen_indiv)
+summary(m1.0)
+```
+    
+    + neither vocabulary nor flanker switch cost alone contribute significantly to online ambiguity resolution
+
+```{r DD2_regression, echo=TRUE}
+m2.0 <- lm(dd2_ambeffect~Age+PropInc3+sw_rtdiff+raw,data=pigpen_indiv)
+summary(m2.0)
+```
+
+* Scatter plots of individual difference measures and the sentence task
+    + plot the correlation between Flanker Accuracy in the Incongruent condition and the Ambiguity effect on action
+```{r plot_flankeraction,echo=FALSE}
+ggplot() +
+  theme_classic(base_size = 20.0) +
+  xlab(label = 'Flanker Incongruent Accuracy') +
+  ylab(label = 'Ambiguity effect on Action\n(Ambiguous vs. Unambiguous)') +
+  scale_x_continuous(breaks = pretty_breaks(),limits = c(0.2,1)) +
+  scale_y_continuous(breaks = pretty_breaks()) +
+  geom_point(aes(x = PropInc3,y = action_ambeffect_lmer),data=pigpen_indiv,shape = 23,size=3) +
+  geom_smooth(aes(x = PropInc3,y = action_ambeffect_lmer),data=pigpen_indiv,colour = '#000000',method = lm,formula = 'y ~ x',se = FALSE)
+```
+    + plot the correlation between Flanker Accuracy in the Incongruent condition and the Ambiguity effect on distractor destination looks
+```{r plot_incongdd2,echo=FALSE}
+ggplot() +
+  theme_classic(base_size = 20.0) +
+  xlab(label = 'Flanker Incongruent Accuracy') +
+  ylab(label = 'Ambiguity effect on \nthe Incorrect Desitination Looks\n(Ambiguous vs. Unambiguous)') +
+  scale_x_continuous(breaks = pretty_breaks()) +
+  scale_y_continuous(breaks = pretty_breaks()) +
+  geom_point(aes(x = PropInc3,y = dd2_ambeffect),data=pigpen_indiv,shape = 23, size = 3) +
+  geom_smooth(aes(x = PropInc3,y = dd2_ambeffect),data=pigpen_indiv,colour = '#000000',method = lm,formula = 'y ~ x',se = FALSE)
+```
+
+    + plot the correlation between Flanker switch cost and the Ambiguity effect on distractor destination looks
+```{r plot_switchdd2,echo=FALSE}
+ggplot() +
+  theme_classic(base_size = 20.0) +
+  xlab(label = 'Flanker Switch Cost') +
+  ylab(label = 'Ambiguity effect on \nthe Incorrect Desitination Looks\n(Ambiguous vs. Unambiguous)') +
+  scale_x_continuous(breaks = pretty_breaks()) +
+  scale_y_continuous(breaks = pretty_breaks()) +
+  geom_point(aes(x = sw_rtdiff,y = dd2_ambeffect),data=pigpen_indiv,shape = 23, size = 3) +
+  geom_smooth(aes(x = sw_rtdiff,y = dd2_ambeffect),data=pigpen_indiv,colour = '#000000',method = lm,formula = 'y ~ x',se = FALSE)
+```
